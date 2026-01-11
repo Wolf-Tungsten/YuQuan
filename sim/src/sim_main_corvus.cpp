@@ -1,25 +1,29 @@
 #include "CYuQuanCModelGen.h"
 #include <sim_main.hpp>
+#include <atomic>
+#include <memory>
+#include <pthread.h>
+#include <signal.h>
+#include <thread>
 
 static corvus_generated::CYuQuanTopModuleGen::TopPortsGen *top = nullptr;
+static std::unique_ptr<corvus_generated::CYuQuanCModelGen> g_cmodel;
+static std::atomic<bool> g_cmodel_cleaned{false};
 struct termios new_settings, stored_settings;
 uint64_t cycles = 0;
-static bool int_sig = false;
 static uint64_t no_commit = 0;
+static sigset_t sigset_int;
+static std::thread sigint_thread;
 
-void int_handler(int sig) {
-  if (sig != SIGINT) {
-    if (write(STDERR_FILENO, "Wrong signal type\n", _countof("Wrong signal type\n"))) _exit(EPERM);
-    else _exit(EIO);
-  }
-  int_sig = true;
-}
+static void setup_sigint_handler();
+static void cleanup_cmodel_once();
 
 void real_int_handler(void) {
   tcsetattr(0, TCSAFLUSH, &stored_settings);
   setlinebuf(stdout);
   setlinebuf(stderr);
   scan_uart(_isRunning) = false;
+  cleanup_cmodel_once();
   if (top) {
     printf("\n" DEBUG "Exit at PC = " FMT_WORD " after %ld clock cycles.\n", top->io_wbPC, cycles / 2);
   }
@@ -28,9 +32,10 @@ void real_int_handler(void) {
 
 int main(int argc, char **argv, char **env) {
   printf("Sim Started\n");
-  corvus_generated::CYuQuanCModelGen cmodel;
+  setup_sigint_handler();
+  g_cmodel = std::make_unique<corvus_generated::CYuQuanCModelGen>();
   printf("CYuQuanCModelGen created\n");
-  top = cmodel.ports();
+  top = g_cmodel->ports();
   if (top == nullptr) {
     fprintf(stderr, "Failed to acquire YuQuan CModel ports\n");
     return 1;
@@ -68,7 +73,6 @@ int main(int argc, char **argv, char **env) {
 
   setbuf(stdout, NULL);
   setbuf(stderr, NULL);
-  signal(SIGINT, int_handler);
 
   tcgetattr(0, &stored_settings);
   new_settings = stored_settings;
@@ -81,14 +85,14 @@ int main(int argc, char **argv, char **env) {
   top->reset = 1;
   top->clock = 0;
   printf("Applying initial reset, entering first eval\n");
-  cmodel.eval();
+  g_cmodel->eval();
   printf("First eval completed\n");
 
   printf("CYuQuanCModelGen reset start\n");
 
   for (int i = 0; i < 50; i++) {
     top->clock = !top->clock;
-    cmodel.eval();
+    g_cmodel->eval();
   }
 
   top->reset = 0;
@@ -100,7 +104,7 @@ int main(int argc, char **argv, char **env) {
       command_init(to_string(mainargs) "\n");
 #endif
     top->clock = !top->clock;
-    cmodel.eval();
+    g_cmodel->eval();
     printf(DEBUG "cycle %ld, clock %d\n", cycles, top->clock);
     no_commit = top->io_wbValid ? 0 : no_commit + 1;
     if (no_commit > 1000000) {
@@ -185,7 +189,6 @@ int main(int argc, char **argv, char **env) {
       ret = 1;
       break;
     }
-    if (int_sig) real_int_handler();
 #ifdef DIFFTEST
     continue;
   reg_diff:
@@ -217,5 +220,31 @@ int main(int argc, char **argv, char **env) {
   tcsetattr(0, TCSAFLUSH, &stored_settings);
   setlinebuf(stdout);
   setlinebuf(stderr);
+  cleanup_cmodel_once();
   return ret;
+}
+
+static void setup_sigint_handler() {
+  sigemptyset(&sigset_int);
+  sigaddset(&sigset_int, SIGINT);
+  pthread_sigmask(SIG_BLOCK, &sigset_int, nullptr);
+  sigint_thread = std::thread([]() {
+    int sig;
+    while (sigwait(&sigset_int, &sig) == 0) {
+      if (sig == SIGINT) {
+        real_int_handler();
+      }
+    }
+  });
+  sigint_thread.detach();
+}
+
+static void cleanup_cmodel_once() {
+  bool expected = false;
+  if (g_cmodel_cleaned.compare_exchange_strong(expected, true)) {
+    if (g_cmodel) {
+      g_cmodel.reset();
+    }
+    top = nullptr;
+  }
 }
