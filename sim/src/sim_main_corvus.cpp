@@ -1,13 +1,7 @@
-#include "VCorvusTopWrapper_generated.h"
-#include "verilated.h"
-#include "verilated_fst_c.h"
+#include "CYuQuanCModelGen.h"
 #include <sim_main.hpp>
 
-// VerilatedContext *const contextp = new VerilatedContext;
-VCorvusTopWrapper *top = nullptr;
-#ifdef TRACE
-VerilatedFstC *tfp = new VerilatedFstC;
-#endif
+static corvus_generated::CYuQuanTopModuleGen::TopPortsGen *top = nullptr;
 struct termios new_settings, stored_settings;
 uint64_t cycles = 0;
 static bool int_sig = false;
@@ -26,15 +20,21 @@ void real_int_handler(void) {
   setlinebuf(stdout);
   setlinebuf(stderr);
   scan_uart(_isRunning) = false;
-#ifdef TRACE
-  tfp->close();
-#endif
-  printf("\n" DEBUG "Exit at PC = " FMT_WORD " after %ld clock cycles.\n", top->io_wbPC, cycles / 2);
+  if (top) {
+    printf("\n" DEBUG "Exit at PC = " FMT_WORD " after %ld clock cycles.\n", top->io_wbPC, cycles / 2);
+  }
   exit(0);
 }
 
 int main(int argc, char **argv, char **env) {
-  top = new VCorvusTopWrapper;
+  printf("Sim Started\n");
+  corvus_generated::CYuQuanCModelGen cmodel;
+  printf("CYuQuanCModelGen created\n");
+  top = cmodel.ports();
+  if (top == nullptr) {
+    fprintf(stderr, "Failed to acquire YuQuan CModel ports\n");
+    return 1;
+  }
 
 #ifdef DIFFTEST
   void *ram_param =
@@ -74,44 +74,39 @@ int main(int argc, char **argv, char **env) {
   new_settings = stored_settings;
   new_settings.c_lflag &= ~ECHOFLAGS;
   tcsetattr(0, TCSAFLUSH, &new_settings);
-  // contextp->commandArgs(argc, argv);
-  
   int ret = 0;
   scan_uart(_init)();
+  printf("TB Init done\n");
 
-#ifdef TRACE
-  // contextp->traceEverOn(true);
-  top->trace(tfp, 0);
-  tfp->open("dump.fst");
-#endif
   top->reset = 1;
   top->clock = 0;
-  top->eval();
+  printf("Applying initial reset, entering first eval\n");
+  cmodel.eval();
+  printf("First eval completed\n");
+
+  printf("CYuQuanCModelGen reset start\n");
 
   for (int i = 0; i < 50; i++) {
-    // contextp->timeInc(1);
     top->clock = !top->clock;
-    top->eval();
+    cmodel.eval();
   }
 
   top->reset = 0;
+  printf("Reset loop finished, reset deasserted\n");
+  printf("CYuQuanCModelGen reset end\n");
   for (;;cycles++) {
 #ifdef mainargs
     if (cycles == 246656526)
       command_init(to_string(mainargs) "\n");
 #endif
-    // contextp->timeInc(1);
     top->clock = !top->clock;
-    top->eval();
+    cmodel.eval();
+    printf(DEBUG "cycle %ld, clock %d\n", cycles, top->clock);
     no_commit = top->io_wbValid ? 0 : no_commit + 1;
     if (no_commit > 1000000) {
       printf(DEBUG "Seems like stuck.\n");
       real_int_handler();
     }
-#ifdef TRACE
-    // if (cycles >= 0)
-    //   tfp->dump(contextp->time());
-#endif
 
 #ifdef DIFFTEST
     if (top->io_wbValid && top->clock) {
@@ -219,12 +214,8 @@ int main(int argc, char **argv, char **env) {
   }
 
   scan_uart(_isRunning) = false;
-  delete top;
   tcsetattr(0, TCSAFLUSH, &stored_settings);
   setlinebuf(stdout);
   setlinebuf(stderr);
-#ifdef TRACE
-  tfp->close();
-#endif
   return ret;
 }
