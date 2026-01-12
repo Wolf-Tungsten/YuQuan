@@ -9,6 +9,7 @@
 static corvus_generated::CYuQuanTopModuleGen::TopPortsGen *top = nullptr;
 static std::unique_ptr<corvus_generated::CYuQuanCModelGen> g_cmodel;
 static std::atomic<bool> g_cmodel_cleaned{false};
+static std::atomic<bool> g_stop_requested{false};
 struct termios new_settings, stored_settings;
 uint64_t cycles = 0;
 static uint64_t no_commit = 0;
@@ -16,18 +17,28 @@ static sigset_t sigset_int;
 static std::thread sigint_thread;
 
 static void setup_sigint_handler();
+static void request_stop();
 static void cleanup_cmodel_once();
 
-void real_int_handler(void) {
-  tcsetattr(0, TCSAFLUSH, &stored_settings);
-  setlinebuf(stdout);
-  setlinebuf(stderr);
-  scan_uart(_isRunning) = false;
-  cleanup_cmodel_once();
-  if (top) {
-    printf("\n" DEBUG "Exit at PC = " FMT_WORD " after %ld clock cycles.\n", top->io_wbPC, cycles / 2);
+static void request_stop() {
+  bool expected = false;
+  if (g_stop_requested.compare_exchange_strong(expected, true)) {
+    scan_uart(_isRunning) = false;
   }
-  exit(0);
+}
+
+static bool try_stop_cmodel() {
+  if (!g_stop_requested.load(std::memory_order_acquire)) {
+    return false;
+  }
+  if (g_cmodel) {
+    g_cmodel->stop();
+  }
+  return true;
+}
+
+void real_int_handler(void) {
+  request_stop();
 }
 
 int main(int argc, char **argv, char **env) {
@@ -99,6 +110,9 @@ int main(int argc, char **argv, char **env) {
   printf("Reset loop finished, reset deasserted\n");
   printf("CYuQuanCModelGen reset end\n");
   for (;;cycles++) {
+    if (try_stop_cmodel()) {
+      break;
+    }
 #ifdef mainargs
     if (cycles == 246656526)
       command_init(to_string(mainargs) "\n");
@@ -109,7 +123,10 @@ int main(int argc, char **argv, char **env) {
     no_commit = top->io_wbValid ? 0 : no_commit + 1;
     if (no_commit > 1000000) {
       printf(DEBUG "Seems like stuck.\n");
-      real_int_handler();
+      request_stop();
+      if (try_stop_cmodel()) {
+        break;
+      }
     }
 
 #ifdef DIFFTEST
@@ -189,6 +206,9 @@ int main(int argc, char **argv, char **env) {
       ret = 1;
       break;
     }
+    if (try_stop_cmodel()) {
+      break;
+    }
 #ifdef DIFFTEST
     continue;
   reg_diff:
@@ -243,8 +263,7 @@ static void cleanup_cmodel_once() {
   bool expected = false;
   if (g_cmodel_cleaned.compare_exchange_strong(expected, true)) {
     if (g_cmodel) {
-      g_cmodel.reset();
+      g_cmodel->stop();
     }
-    top = nullptr;
   }
 }
