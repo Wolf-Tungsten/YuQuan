@@ -16,7 +16,7 @@ _CORVUS_USER_INCLUDE_FLAGS = -I$(YQ_DIR)/sim/include \
                              -I$(VERILATOR_ROOT)/include/vltstd
 _CORVUS_USER_MACRO_FLAGS = -DDIFFTEST
 _CORVUS_USER_LIB_FLAGS = -L$(LIB_DIR) -lrv64spike -pthread
-VERILATOR_LIBS := $(wildcard $(YUQUAN_SIM_DIR)/verilator-compile-*/libV*.a)
+VERILATOR_LIBS = $(wildcard $(YUQUAN_SIM_DIR)/verilator-compile-*/libV*.a)
 VERILATOR_LIBS += $(firstword $(wildcard $(YUQUAN_SIM_DIR)/verilator-compile-*/libverilated.a))
 _CORVUS_USER_SRC_FILES = $(YQ_DIR)/sim/src/peripheral/uart/uart.cpp \
 				         $(YQ_DIR)/sim/src/peripheral/sdcard/sdcard.cpp \

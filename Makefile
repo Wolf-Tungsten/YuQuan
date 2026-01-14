@@ -149,15 +149,23 @@ verilate: $(TOP_FILE_PATH)
 	cd $(YUQUAN_SIM_DIR) && \
 	verilator $(VFLAGS) --build $(CSRCS) -CFLAGS "$(CFLAGS)" -LDFLAGS "$(LDFLAGS)" >/dev/null
 
+SIM_DEPS := $(LIB_SPIKE)
 ifeq ($(CORVUSITOR),1)
-SIMULATE = corvusitor
+CORVUSITOR_BUILD_DIR ?= $(YUQUAN_SIM_DIR)/corvusitor-compile
 else
-SIMULATE = verilate
+SIM_DEPS += verilate
 endif
 
-sim: $(LIB_SPIKE) $(SIMULATE)
+sim: $(SIM_DEPS)
 ifeq ($(CORVUSITOR),1)
-	$(MAKE) -C $(YUQUAN_SIM_DIR)/corvusitor-compile sim BIN=$(BIN)
+	@mkdir -p $(CORVUSITOR_BUILD_DIR)
+	@cp $(simSrcDir)/sim_main_corvus.mk $(CORVUSITOR_BUILD_DIR)/Makefile
+	$(MAKE) -C $(CORVUSITOR_BUILD_DIR) sim BIN=$(BIN) \
+	  YQ_DIR=$(pwd) \
+	  YUQUAN_SIM_DIR=$(YUQUAN_SIM_DIR) \
+	  CORVUSITOR_MBUS_COUNT=$(CORVUSITOR_MBUS_COUNT) \
+	  CORVUSITOR_SBUS_COUNT=$(CORVUSITOR_SBUS_COUNT) \
+	  CORVUSITOR_BIN=$(CORVUSITOR_BIN)
 else
 ifeq ($(BIN),)
 	$(error $(nobin))
@@ -165,7 +173,7 @@ endif
 	@$(VERILATOR_TARGET) $(binFile) $(flashBinFile)
 endif
 
-simall: $(LIB_SPIKE) $(SIMULATE)
+simall: $(LIB_SPIKE) verilate
 	@for x in $(SIMBIN); do \
 		$(VERILATOR_TARGET) $(pwd)/sim/bin/$$x-$(ISA)-nemu.bin >/dev/null 2>&1; \
 		if [ $$? -eq 0 ]; then printf "[$$x] \33[1;32mpass\33[0m\n"; \
@@ -209,12 +217,4 @@ verilate-archive: $(TOP_FILE_PATH) $(CORVUS_MODULE_FILES:%=.corvus.run.%)
 
 $(foreach f,$(CORVUS_MODULE_FILES),$(eval $(call RUN_CORVUS_MODULE,$f)))
 
-corvusitor: verilate-archive
-	mkdir -p $(YUQUAN_SIM_DIR)/corvusitor-compile
-	cp $(simSrcDir)/sim_main_corvus.mk $(YUQUAN_SIM_DIR)/corvusitor-compile/Makefile
-	@$(MAKE) -C $(YUQUAN_SIM_DIR)/corvusitor-compile sim BIN=$(BIN) \
-	  YQ_DIR=$(pwd) \
-	  CORVUSITOR_MBUS_COUNT=$(CORVUSITOR_MBUS_COUNT) \
-	  CORVUSITOR_SBUS_COUNT=$(CORVUSITOR_SBUS_COUNT)
-
-.PHONY: test verilog help compile bsp reformat checkformat ysyxcheck clean clean-all verilate sim simall zmb lxb rv64 la32r $(LIB_DIR)/librv64spike.so corvusitor yuquan_cmodel_gen
+.PHONY: test verilog help compile bsp reformat checkformat ysyxcheck clean clean-all verilate sim simall zmb lxb rv64 la32r $(LIB_DIR)/librv64spike.so yuquan_cmodel_gen
