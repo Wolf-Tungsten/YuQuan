@@ -46,6 +46,7 @@ VFLAGS  += -I$(simSrcDir)/peripheral/spiFlash
 VFLAGS  += -I$(simSrcDir)/peripheral/sdcard
 VFLAGS  += -Mdir $(OBJ_DIR)
 VFLAGS  += -cc $(TOP).sv
+VFLAGS  += -DPRINTF_COND_=1
 
 ifeq ($(TRACE),1)
 VFLAGS += --trace-fst --trace-threads 2 --trace-underscore

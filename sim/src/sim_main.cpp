@@ -103,6 +103,9 @@ int main(int argc, char **argv, char **env) {
     contextp->timeInc(1);
     top->clock = !top->clock;
     top->eval();
+    if(cycles > 100) {
+      real_int_handler();
+    }
     no_commit = top->io_wbValid ? 0 : no_commit + 1;
     if (no_commit > 1000000) {
       printf(DEBUG "Seems like stuck.\n");

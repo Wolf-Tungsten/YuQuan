@@ -119,7 +119,9 @@ int main(int argc, char **argv, char **env) {
 #endif
     top->clock = !top->clock;
     g_cmodel->eval();
-    printf(DEBUG "cycle %ld, clock %d\n", cycles, top->clock);
+    if(cycles > 100) {
+      real_int_handler();
+    }
     no_commit = top->io_wbValid ? 0 : no_commit + 1;
     if (no_commit > 1000000) {
       printf(DEBUG "Seems like stuck.\n");

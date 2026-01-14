@@ -111,6 +111,10 @@ class ALU(implicit p: Parameters) extends YQModule {
   result := Mux1H(operates.map(x => (io.input.bits.op === x._1, x._2)))
 
   when(io.input.bits.word) { io.output.bits := (Fill(32, result(31)) ## result(31, 0)).asSInt }
+
+  val grhReg = RegInit(0.U(8.W))
+  grhReg := grhReg + 1.U
+  printf(p"grhReg=${grhReg}\n")
 }
 
 object Operators {

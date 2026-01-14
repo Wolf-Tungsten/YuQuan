@@ -147,6 +147,7 @@ class CPU(implicit p: Parameters) extends YQModule with CacheParams {
   io.master.r.ready := 1.B
   io.master.b.ready := 1.B
 
+  printf(p"Chisel CPU Info: wbValid=0x${Hexadecimal(io.debug.wbValid)} wbPC=0x${Hexadecimal(io.debug.wbPC)} mstatus=0x${Hexadecimal(io.debug.mstatus)}\n")
   if (Debug) {
     io.debug.exit     := moduleWB.io.debug.exit
     io.debug.wbPC     := moduleWB.io.debug.pc
