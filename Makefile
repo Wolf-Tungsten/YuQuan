@@ -197,7 +197,7 @@ $(LIB_SPIKE):
 $(YUQUAN_SENTINEL): verilate-archive
 	@true
 
-$(CORVUSITOR_CMODEL_SENTINEL): $(YUQUAN_SENTINEL)
+$(CORVUSITOR_CMODEL_SENTINEL): $(YUQUAN_SENTINEL) $(CORVUSITOR_BIN) FORCE
 	@mkdir -p $(CORVUSITOR_OUTPUT_DIR)
 	$(CORVUSITOR_BIN) --module-build-dir=$(YUQUAN_SIM_DIR) --output-dir=$(CORVUSITOR_OUTPUT_DIR) --output-name=$(CORVUSITOR_CMODEL_OUTPUT_NAME) --mbus-count=$(CORVUSITOR_MBUS_COUNT) --sbus-count=$(CORVUSITOR_SBUS_COUNT) --target cmodel
 
@@ -216,5 +216,7 @@ endef
 verilate-archive: $(TOP_FILE_PATH) $(CORVUS_MODULE_FILES:%=.corvus.run.%)
 
 $(foreach f,$(CORVUS_MODULE_FILES),$(eval $(call RUN_CORVUS_MODULE,$f)))
+
+FORCE:
 
 .PHONY: test verilog help compile bsp reformat checkformat ysyxcheck clean clean-all verilate sim simall zmb lxb rv64 la32r $(LIB_DIR)/librv64spike.so yuquan_cmodel_gen
