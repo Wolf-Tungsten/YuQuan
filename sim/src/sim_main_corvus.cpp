@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <thread>
+#include <array>
 
 static corvus_generated::CYuQuanTopModuleGen::TopPortsGen *top = nullptr;
 static std::unique_ptr<corvus_generated::CYuQuanCModelGen> g_cmodel;
@@ -76,7 +77,16 @@ int main(int argc, char **argv, char **env) {
     difftest_regcpy(tmp, DIFFTEST_TO_REF);
     difftest_memcpy(0x80000000UL, ram_param, PMEM_SIZE, DIFFTEST_TO_REF);
   }
-  QData *gprs = &top->io_gprs_0;
+  std::array<QData*, 32> gprs = {
+      &top->io_gprs_0,  &top->io_gprs_1,  &top->io_gprs_2,  &top->io_gprs_3,
+      &top->io_gprs_4,  &top->io_gprs_5,  &top->io_gprs_6,  &top->io_gprs_7,
+      &top->io_gprs_8,  &top->io_gprs_9,  &top->io_gprs_10, &top->io_gprs_11,
+      &top->io_gprs_12, &top->io_gprs_13, &top->io_gprs_14, &top->io_gprs_15,
+      &top->io_gprs_16, &top->io_gprs_17, &top->io_gprs_18, &top->io_gprs_19,
+      &top->io_gprs_20, &top->io_gprs_21, &top->io_gprs_22, &top->io_gprs_23,
+      &top->io_gprs_24, &top->io_gprs_25, &top->io_gprs_26, &top->io_gprs_27,
+      &top->io_gprs_28, &top->io_gprs_29, &top->io_gprs_30, &top->io_gprs_31,
+  };
   char name[15] = {};
   size_t cpu_reg, diff_reg;
   size_t diff_regs[50];
@@ -119,9 +129,9 @@ int main(int argc, char **argv, char **env) {
 #endif
     top->clock = !top->clock;
     g_cmodel->eval();
-    if(cycles > 100) {
-      real_int_handler();
-    }
+    // if(cycles > 100) {
+    //   real_int_handler();
+    // }
     no_commit = top->io_wbValid ? 0 : no_commit + 1;
     if (no_commit > 1000000) {
       printf(DEBUG "Seems like stuck.\n");
@@ -158,11 +168,11 @@ int main(int argc, char **argv, char **env) {
         add_diff(mie);
         add_diff(mscratch);
         add_diff(priv);
-        for (int i = 0; i < 32; i++) if (diff_regs[i] != gprs[i]) {
+        for (int i = 0; i < 32; i++) if (diff_regs[i] != *gprs[i]) {
           char tmp[10];
           sprintf(tmp, "GPR[%d]", i);
           strcpy(name, tmp);
-          cpu_reg = gprs[i];
+          cpu_reg = *gprs[i];
           diff_reg = diff_regs[i];
           goto reg_diff;
         }
@@ -171,7 +181,9 @@ int main(int argc, char **argv, char **env) {
           difftest_exec(1);
         size_t tmp[50];
         difftest_regcpy(tmp, DIFFTEST_TO_DUT);
-        memcpy(tmp, gprs, 32 * sizeof(size_t));
+        for (int i = 0; i < 32; i++) {
+          tmp[i] = *gprs[i];
+        }
         tmp[mstatus] = top->io_mstatus;
         tmp[mepc] = top->io_mepc;
         tmp[sepc] = top->io_sepc;
@@ -219,7 +231,7 @@ int main(int argc, char **argv, char **env) {
     printf("at pc = " FMT_WORD "\n" DEBUG, pc);
     printf("pc = " FMT_WORD "\tspike_pc = " FMT_WORD "\n", pc, diff_regs[32]);
     for (int i = 0; i < 32; i++)
-      printf("GPR[%d] = " FMT_WORD "\tspike_GPR[%d] = " FMT_WORD "\n", i, gprs[i], i, diff_regs[i]);
+      printf("GPR[%d] = " FMT_WORD "\tspike_GPR[%d] = " FMT_WORD "\n", i, *gprs[i], i, diff_regs[i]);
     print_csr(mstatus);
     print_csr(mtval);
     print_csr(stval);
